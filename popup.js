@@ -8,6 +8,13 @@ function toArray(domList) {
   }
   return arr
 }
+function workDayIndex(date) {
+  const month = date.getMonth() + 1
+  const monthPrefix = month < 10 ? "0" : ""
+  const dateInMonth = date.getDate()
+  const datePrefix = date < 10 ? "0" : ""
+  return monthPrefix + month + "-" + datePrefix + dateInMonth;
+}
 
 function extractWorkItem(itemDom) {
   let item = {}
@@ -18,7 +25,7 @@ function extractWorkItem(itemDom) {
   let user = detailTrs[0].innerText;
   let classType = detailTrs[2].innerText;
   let classHour = classType.includes("规划") ? 0.5 : 1.5
-  return { time, user, classType, classHour };
+  return { time, user, classType, classHour, isNewPlatform };
 }
 
 function extractWeekWork(weekDocument) {
@@ -44,7 +51,23 @@ function dayString(date) {
   return `${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`
 }
 
-function test () {
+function getWorkList(date) {
+  return new Promise((resolve, reject) => {
+    var x = new XMLHttpRequest();
+    x.open('GET', "http://xdf.helxsoft.cn/t/mycourse?date=" + date);
+    x.responseType = 'document';
+    x.onload = function(res) {
+      resolve(extractWeekWork(x.responseXML))
+    };
+    x.onerror = function(err) {
+      console.log(err)
+      reject(err)
+    };
+    x.send();
+  })
+}
+
+function caculate () {
   const now = new Date()
   const year = now.getFullYear(), month = now.getMonth(), date = now.getDate(), day= now.getDay()
   const startDay = month == 0 ? new Date(year - 1, 11, 21) : new Date(year, month - 1, 21)
@@ -56,29 +79,69 @@ function test () {
     apiStartDays.push(apiStartDay)
     apiStartDay = new Date(apiStartDay.getFullYear(), apiStartDay.getMonth(), apiStartDay.getDate() + 7)
   }
-  let workMap = {}
-  apiStartDays.map(date => dayString(date)).forEach(date => {
-    getWorkList(date, (work) => {
-      workMap = Object.assign(workMap, work)
-      console.log(workMap)
+  const apiPromises = apiStartDays.map(date => dayString(date)).map(dateString => getWorkList(dateString));
+  return Promise.all(apiPromises)
+    .then((weekWorkMaps) => {
+      const monthWorkMap = weekWorkMaps.reduce((result, map) => Object.assign(result, map), {})
+      console.log(monthWorkMap)
+      return Promise.resolve(monthWorkMap)
     })
-  })
+    .then(monthWorkMap => { //过滤掉无效的日期
+      const startKey = workDayIndex(startDay)
+      const endKey = workDayIndex(endDay)
+      const dayKeys = Object.keys(monthWorkMap).filter(key => startKey <= key.substr(0, 5) && endKey >= key.substr(0, 5))
+      const realWorkMap = {}
+      dayKeys.forEach(dayKey => {
+        realWorkMap[dayKey] = monthWorkMap[dayKey]
+      })
+      console.log(realWorkMap)
+      return Promise.resolve(realWorkMap)
+    })
+    .then(workMap => { //转成 studentsMap
+      const newStudentsMap = {}
+      const oldStudentsMap = {}
+      for (let day in workMap) {
+        const dayClassList = workMap[day]
+        dayClassList.forEach(dayClass => {
+          const user = dayClass.user.trim()
+          const classRecord = { day, time: dayClass.time, type: dayClass.classType, hour: dayClass.hour }
+          const curStudent = null
+          if (dayClass.isNewPlatform) {
+            newStudentsMap[user] ? (curStudent = newStudentsMap[user]) : (curStudent = newStudentsMap[user] = { total: 0, classes: []})
+          } else {
+            oldStudentsMap[user] ? (curStudent = oldStudentsMap[user]) : (curStudent = oldStudentsMap[user] = { total: 0, classes: []})
+          }
+          curStudent.total = curStudent.total + dayClass.classHour
+          curStudent.total.classes.push(classRecord)
+        })
+      }
+      return Promise.resolve({newStudentsMap, oldStudentsMap})
+    })
+    .then(studentsMap => {
+      let results = []
+      let total = 0
+      for (var oldStudent in studentsMap.oldStudentsMap) {
+        const student = studentsMap.oldStudentsMap[oldStudent]
+        total += student.total
+        const studentMsg = (oldStudent + "                 ").substr(0, 15) + ":    " + student.total
+        results.push(studentMsg)
+      }
+      const spliterMsg = "    >> 以下是新平台学生  <<    "
+      results.push(spliterMsg)
+      for (var newStudent in studentsMap.newStudentsMap) {
+        const student = studentsMap.newStudentsMap[newStudent]
+        total += student.total
+        const studentMsg = (newStudent + "                 ").substr(0, 15) + ":    " + student.total
+        results.push(studentMsg)
+      }
+      const totalMsg = "总计:   " + total
+      results.push(totalMsg)
+      console.log(studentsMap)
+      return Promise.resolve(results)
+    })
 }
 
-function getWorkList(date, success) {
-  var x = new XMLHttpRequest();
-  x.open('GET', "http://xdf.helxsoft.cn/t/mycourse?date=" + date);
-  // The Google image search API responds with JSON, so let Chrome parse it.
-  x.responseType = 'document';
-  x.onload = function(res) {
-    // Parse and process the response from Google Image Search.
-    success(extractWeekWork(x.responseXML))
-  };
-  x.onerror = function(err) {
-    console.log(err)
-  };
-  x.send();
-}
+
 
 /**
  * Get the current URL.
@@ -126,90 +189,28 @@ function getCurrentTabUrl(callback) {
   // alert(url); // Shows "undefined", because chrome.tabs.query is async.
 }
 
-/**
- * @param {string} searchTerm - Search term for Google Image search.
- * @param {function(string,number,number)} callback - Called when an image has
- *   been found. The callback gets the URL, width and height of the image.
- * @param {function(string)} errorCallback - Called when the image is not found.
- *   The callback gets a string that describes the failure reason.
- */
-function getImageUrl(searchTerm, callback, errorCallback) {
-  // Google image search - 100 searches per day.
-  // https://developers.google.com/image-search/
-  var searchUrl = 'https://ajax.googleapis.com/ajax/services/search/images' +
-    '?v=1.0&q=' + encodeURIComponent(searchTerm);
-  var x = new XMLHttpRequest();
-  x.open('GET', searchUrl);
-  // The Google image search API responds with JSON, so let Chrome parse it.
-  x.responseType = 'json';
-  x.onload = function() {
-    // Parse and process the response from Google Image Search.
-    var response = x.response;
-    if (!response || !response.responseData || !response.responseData.results ||
-        response.responseData.results.length === 0) {
-      errorCallback('No response from Google Image search!');
-      return;
-    }
-    var firstResult = response.responseData.results[0];
-    // Take the thumbnail instead of the full image to get an approximately
-    // consistent image size.
-    var imageUrl = firstResult.tbUrl;
-    var width = parseInt(firstResult.tbWidth);
-    var height = parseInt(firstResult.tbHeight);
-    console.assert(
-        typeof imageUrl == 'string' && !isNaN(width) && !isNaN(height),
-        'Unexpected respose from the Google Image Search API!');
-    callback(imageUrl, width, height);
-  };
-  x.onerror = function() {
-    errorCallback('Network error.');
-  };
-  x.send();
-}
-
-function getWorkList() {
-  document.getElementById('xdf').textContent = "send Request";
-  var x = new XMLHttpRequest();
-  x.open('GET', "http://xdf.helxsoft.cn/t/mycourse?date=2017-08-14");
-  // The Google image search API responds with JSON, so let Chrome parse it.
-  x.responseType = 'document';
-  x.onload = function(res) {
-    // Parse and process the response from Google Image Search.
-    console.log(x.responseXML)
-    document.getElementById('xdf').textContent = "Success";
-  };
-  x.onerror = function(err) {
-    document.getElementById('xdf').textContent = "出错了" + err;
-  };
-  x.send();
-}
-
 function renderStatus(statusText) {
   document.getElementById('status').textContent = statusText;
 }
 
+function renderResults(results) {
+  const xdfDom = document.getElementById('xdf')
+  results.forEach(result => {
+    console.log(result)
+    const pDom = document.createElement('p')
+    pDom.textContent = result
+    xdfDom.appendChild(pDom)
+  })
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  getCurrentTabUrl(function(url) {
-    // Put the image URL in Google search.
-    renderStatus('Performing Google Image search for ' + url);
-
-    getImageUrl(url, function(imageUrl, width, height) {
-
-      renderStatus('Search term: ' + url + '\n' +
-          'Google image search result: ' + imageUrl);
-      var imageResult = document.getElementById('image-result');
-      // Explicitly set the width/height to minimize the number of reflows. For
-      // a single image, this does not matter, but if you're going to embed
-      // multiple external images in your page, then the absence of width/height
-      // attributes causes the popup to resize multiple times.
-      imageResult.width = width;
-      imageResult.height = height;
-      imageResult.src = imageUrl;
-      imageResult.hidden = false;
-
-    }, function(errorMessage) {
-      renderStatus('Cannot display image. ' + errorMessage);
-    });
-    getWorkList();
-  });
+  renderStatus("正在计算中...")
+  caculate()
+    .then(results => {
+      renderStatus("成功！")
+      renderResults(results)
+    })
+    .catch(error => {
+      renderStatus("出错了: " + error)
+    })
 });
