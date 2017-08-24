@@ -18,19 +18,19 @@ function workDayIndex(date) {
 
 function extractWorkItem(itemDom) {
   let item = {}
-  const isNewPlatform = !itemDom.style.backgroundColor.includes("(255, 255, 255)")
+  const isNewPlatform = itemDom.style.backgroundColor.includes("(255, 255, 255)")
   const timeTr = itemDom.children[0].children[0].children[0];
   let time = timeTr.innerText;
   const detailTrs = toArray(itemDom.children[1].children[0].children[0].children[0].children[0].children[0].children)
   let user = detailTrs[0].innerText;
   let classType = detailTrs[2].innerText;
   let classHour = classType.includes("规划") ? 0.5 : 1.5
-  return { time, user, classType, classHour, isNewPlatform };
+  return { time: time, user: user, classType: classType, classHour: classHour, isNewPlatform: isNewPlatform };
 }
 
 function extractWeekWork(weekDocument) {
   const thList = toArray(weekDocument.getElementsByClassName("date_line")[0].children);
-  const trList = toArray(document.getElementsByClassName("class_info")).map(trDom => toArray(trDom.children));
+  const trList = toArray(weekDocument.getElementsByClassName("class_info")).map(trDom => toArray(trDom.children));
   const weekData = {};
   for (let thIndex = 0; thIndex < thList.length; thIndex++) {
     let dateText = thList[thIndex].innerText;
@@ -51,12 +51,21 @@ function dayString(date) {
   return `${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`
 }
 
+function align(str, alignLen) {
+  let suffix = ""
+  for (let i = 0; i < alignLen; i++) {
+    suffix += " "
+  }
+  return (str + suffix).substr(0, alignLen)
+}
+
 function getWorkList(date) {
   return new Promise((resolve, reject) => {
     var x = new XMLHttpRequest();
     x.open('GET', "http://xdf.helxsoft.cn/t/mycourse?date=" + date);
     x.responseType = 'document';
     x.onload = function(res) {
+      console.log(x.responseXML)
       resolve(extractWeekWork(x.responseXML))
     };
     x.onerror = function(err) {
@@ -83,7 +92,6 @@ function caculate () {
   return Promise.all(apiPromises)
     .then((weekWorkMaps) => {
       const monthWorkMap = weekWorkMaps.reduce((result, map) => Object.assign(result, map), {})
-      console.log(monthWorkMap)
       return Promise.resolve(monthWorkMap)
     })
     .then(monthWorkMap => { //过滤掉无效的日期
@@ -94,121 +102,79 @@ function caculate () {
       dayKeys.forEach(dayKey => {
         realWorkMap[dayKey] = monthWorkMap[dayKey]
       })
-      console.log(realWorkMap)
       return Promise.resolve(realWorkMap)
     })
     .then(workMap => { //转成 studentsMap
       const newStudentsMap = {}
       const oldStudentsMap = {}
+      let totalHour = 0
       for (let day in workMap) {
         const dayClassList = workMap[day]
         dayClassList.forEach(dayClass => {
           const user = dayClass.user.trim()
           const classRecord = { day, time: dayClass.time, type: dayClass.classType, hour: dayClass.hour }
-          const curStudent = null
-          if (dayClass.isNewPlatform) {
-            newStudentsMap[user] ? (curStudent = newStudentsMap[user]) : (curStudent = newStudentsMap[user] = { total: 0, classes: []})
-          } else {
-            oldStudentsMap[user] ? (curStudent = oldStudentsMap[user]) : (curStudent = oldStudentsMap[user] = { total: 0, classes: []})
+          const studentsMap = dayClass.isNewPlatform ? newStudentsMap : oldStudentsMap
+          if (!studentsMap[user]) {
+            studentsMap[user] = { total: 0, planCount: 0, formalCount:0, classes: [] }
           }
-          curStudent.total = curStudent.total + dayClass.classHour
-          curStudent.total.classes.push(classRecord)
+          if (dayClass.classType.includes("规划")) {
+            studentsMap[user].planCount = studentsMap[user].planCount + 1
+          } else {
+            studentsMap[user].formalCount = studentsMap[user].formalCount + 1
+          }
+          studentsMap[user].total = studentsMap[user].total + dayClass.classHour
+          studentsMap[user].classes.push(classRecord)
+          totalHour += dayClass.classHour
         })
       }
-      return Promise.resolve({newStudentsMap, oldStudentsMap})
+      return Promise.resolve({newStudentsMap, oldStudentsMap, totalHour})
     })
-    .then(studentsMap => {
-      let results = []
-      let total = 0
-      for (var oldStudent in studentsMap.oldStudentsMap) {
-        const student = studentsMap.oldStudentsMap[oldStudent]
-        total += student.total
-        const studentMsg = (oldStudent + "                 ").substr(0, 15) + ":    " + student.total
-        results.push(studentMsg)
+    .then(studentsMap => {//转成两个Array
+      const newPlatformStudents = []
+      const oldPlatformStudents = []
+      for (let name in studentsMap.newStudentsMap) {
+        newPlatformStudents.push(Object.assign({ name: align(name, 30) }, studentsMap.newStudentsMap[name]))
       }
-      const spliterMsg = "    >> 以下是新平台学生  <<    "
-      results.push(spliterMsg)
-      for (var newStudent in studentsMap.newStudentsMap) {
-        const student = studentsMap.newStudentsMap[newStudent]
-        total += student.total
-        const studentMsg = (newStudent + "                 ").substr(0, 15) + ":    " + student.total
-        results.push(studentMsg)
+      for (let name in studentsMap.oldStudentsMap) {
+        oldPlatformStudents.push(Object.assign({ name: align(name, 30) }, studentsMap.oldStudentsMap[name]))
       }
-      const totalMsg = "总计:   " + total
-      results.push(totalMsg)
-      console.log(studentsMap)
-      return Promise.resolve(results)
+      return Promise.resolve({ newPlatformStudents, oldPlatformStudents, totalHour: studentsMap.totalHour })
     })
 }
 
-
-
-/**
- * Get the current URL.
- *
- * @param {function(string)} callback - called when the URL of the current tab
- *   is found.
- */
-
-function getCurrentTabUrl(callback) {
-  // Query filter to be passed to chrome.tabs.query - see
-  // https://developer.chrome.com/extensions/tabs#method-query
-  var queryInfo = {
-    active: true,
-    currentWindow: true
-  };
-
-  chrome.tabs.query(queryInfo, function(tabs) {
-    // chrome.tabs.query invokes the callback with a list of tabs that match the
-    // query. When the popup is opened, there is certainly a window and at least
-    // one tab, so we can safely assume that |tabs| is a non-empty array.
-    // A window can only have one active tab at a time, so the array consists of
-    // exactly one tab.
-    var tab = tabs[0];
-
-    // A tab is a plain object that provides information about the tab.
-    // See https://developer.chrome.com/extensions/tabs#type-Tab
-    var url = tab.url;
-
-    // tab.url is only available if the "activeTab" permission is declared.
-    // If you want to see the URL of other tabs (e.g. after removing active:true
-    // from |queryInfo|), then the "tabs" permission is required to see their
-    // "url" properties.
-    console.assert(typeof url == 'string', 'tab.url should be a string');
-
-    callback(url);
-  });
-
-  // Most methods of the Chrome extension APIs are asynchronous. This means that
-  // you CANNOT do something like this:
-  //
-  // var url;
-  // chrome.tabs.query(queryInfo, function(tabs) {
-  //   url = tabs[0].url;
-  // });
-  // alert(url); // Shows "undefined", because chrome.tabs.query is async.
-}
-
+// Render
 function renderStatus(statusText) {
   document.getElementById('status').textContent = statusText;
 }
 
-function renderResults(results) {
+function generateDom(type="p", className="", message="") {
+  let pDom = document.createElement(type)
+  pDom.className = className
+  pDom.innerHTML = message
+  return pDom
+}
+
+function renderResults(result) {
   const xdfDom = document.getElementById('xdf')
-  results.forEach(result => {
-    console.log(result)
-    const pDom = document.createElement('p')
-    pDom.textContent = result
-    xdfDom.appendChild(pDom)
+  xdfDom.appendChild(generateDom("p", "new-platform-tip", "新平台"))
+  result.newPlatformStudents.forEach(student => {
+    const studentInfo = `${student.name}:   规划课 ${student.planCount} 次 ; 正课 ${student.formalCount} 次`
+    xdfDom.appendChild(generateDom("p", "new-student-info", studentInfo))
   })
+  xdfDom.appendChild(generateDom("p", "old-platform-tip", "<strong>老</strong>平台"))
+  result.oldPlatformStudents.forEach(student => {
+    const studentInfo = `${student.name}:   规划课 ${student.planCount} 次 ; 正课 ${student.formalCount} 次`
+    xdfDom.appendChild(generateDom("p", "old-student-info", studentInfo))
+  })
+  xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时`))
 }
 
 document.addEventListener('DOMContentLoaded', function() {
   renderStatus("正在计算中...")
   caculate()
-    .then(results => {
+    .then(result => {
       renderStatus("成功！")
-      renderResults(results)
+      renderResults(result)
     })
     .catch(error => {
       renderStatus("出错了: " + error)
