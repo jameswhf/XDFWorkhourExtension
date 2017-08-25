@@ -75,11 +75,17 @@ function getWorkList(date) {
   })
 }
 
-function caculate () {
+function caculate (startDate, endDate) {
   const now = new Date()
   const year = now.getFullYear(), month = now.getMonth(), date = now.getDate(), day= now.getDay()
-  const startDay = month == 0 ? new Date(year - 1, 11, 21) : new Date(year, month - 1, 21)
-  const endDay = new Date(year, month, 20)
+  let startDay = month == 0 ? new Date(year - 1, 11, 21) : new Date(year, month - 1, 21)
+  let endDay = new Date(year, month, 20)
+  if (startDate) {
+    startDay = startDate
+  }
+  if (endDate) {
+    endDay = endDate
+  }
   const startDayInWeek = startDay.getDay() - 1
   let apiStartDay = new Date(startDay.getFullYear(), startDay.getMonth(), 21 - (startDay.getDay() - 1))
   const apiStartDays = []
@@ -155,6 +161,7 @@ function generateDom(type="p", className="", message="") {
 
 function renderResults(result) {
   const xdfDom = document.getElementById('xdf')
+  xdfDom.innerHTML = ""
   xdfDom.appendChild(generateDom("p", "new-platform-tip", "新平台"))
   result.newPlatformStudents.forEach(student => {
     const studentInfo = `${student.name}:   规划课 ${student.planCount} 次 ; 正课 ${student.formalCount} 次`
@@ -168,14 +175,23 @@ function renderResults(result) {
   xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时`))
 }
 
+
 document.addEventListener('DOMContentLoaded', function() {
-  renderStatus("正在计算中...")
-  caculate()
-    .then(result => {
-      renderStatus("成功！")
-      renderResults(result)
-    })
-    .catch(error => {
-      renderStatus("出错了: " + error)
-    })
+  document.getElementById("caculateBtn").onclick = function() {
+    const startTime = document.getElementById("startTime").value
+    const endTime = document.getElementById("endTime").value
+    if (startTime.match(/\d{4}-\d{2}-\d{2}/) && endTime.match(/\d{4}-\d{2}-\d{2}/)) {
+      renderStatus("正在计算中...")
+      caculate(new Date(startTime), new Date(endTime))
+        .then(result => {
+          renderStatus("成功！")
+          renderResults(result)
+        })
+        .catch(error => {
+          renderStatus("出错了: " + error)
+        })
+    } else {
+      renderStatus("时间格式填写错误")
+    }
+  }
 });
