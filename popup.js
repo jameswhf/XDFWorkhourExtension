@@ -65,7 +65,6 @@ function getWorkList(date) {
     x.open('GET', "http://xdf.helxsoft.cn/t/mycourse?date=" + date);
     x.responseType = 'document';
     x.onload = function(res) {
-      console.log(x.responseXML)
       resolve(extractWeekWork(x.responseXML))
     };
     x.onerror = function(err) {
