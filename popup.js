@@ -52,11 +52,13 @@ function dayString(date) {
 }
 
 function align(str, alignLen) {
+  const startPos = str.indexOf('【')
+  let newStr = str.substr(startPos)
   let suffix = ""
   for (let i = 0; i < alignLen; i++) {
     suffix += " "
   }
-  return (str + suffix).substr(0, alignLen)
+  return (newStr + suffix).substr(0, alignLen)
 }
 
 function getWorkList(date) {
@@ -113,6 +115,8 @@ function caculate (startDate, endDate) {
       const newStudentsMap = {}
       const oldStudentsMap = {}
       let totalHour = 0
+      let planHour = 0
+      let formalHour = 0
       for (let day in workMap) {
         const dayClassList = workMap[day]
         dayClassList.forEach(dayClass => {
@@ -124,15 +128,17 @@ function caculate (startDate, endDate) {
           }
           if (dayClass.classType.includes("规划")) {
             studentsMap[user].planCount = studentsMap[user].planCount + 1
+            planHour += dayClass.classHour
           } else {
             studentsMap[user].formalCount = studentsMap[user].formalCount + 1
+            formalHour += dayClass.classHour
           }
           studentsMap[user].total = studentsMap[user].total + dayClass.classHour
           studentsMap[user].classes.push(classRecord)
           totalHour += dayClass.classHour
         })
       }
-      return Promise.resolve({newStudentsMap, oldStudentsMap, totalHour})
+      return Promise.resolve({newStudentsMap, oldStudentsMap, totalHour, planHour, formalHour})
     })
     .then(studentsMap => {//转成两个Array
       const newPlatformStudents = []
@@ -143,7 +149,8 @@ function caculate (startDate, endDate) {
       for (let name in studentsMap.oldStudentsMap) {
         oldPlatformStudents.push(Object.assign({ name: align(name, 30) }, studentsMap.oldStudentsMap[name]))
       }
-      return Promise.resolve({ newPlatformStudents, oldPlatformStudents, totalHour: studentsMap.totalHour })
+      const { totalHour, planHour, formalHour } = studentsMap
+      return Promise.resolve({ newPlatformStudents, oldPlatformStudents, totalHour, planHour, formalHour })
     })
 }
 
@@ -200,14 +207,17 @@ function renderResults(result, showType) {
     }
     xdfDom.appendChild(generateDom("p", "old-student-info", studentInfo))
   })
-  xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时`))
+  xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时 (规划: ${result.planHour}小时，正课: ${result.formalHour}小时)`))
 }
 
 
 document.addEventListener('DOMContentLoaded', function() {
-  let showType = "all"
+  let showType = null
   let result = null
   toArray(document.getElementsByName("showType")).forEach(inputDom => {
+    if (inputDom.checked) {
+      showType = inputDom.value
+    }
     inputDom.onclick = function() {
       if (showType !== inputDom.value) {
         showType = inputDom.value
