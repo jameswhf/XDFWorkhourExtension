@@ -159,17 +159,45 @@ function generateDom(type="p", className="", message="") {
   return pDom
 }
 
-function renderResults(result) {
+function renderResults(result, showType) {
   const xdfDom = document.getElementById('xdf')
   xdfDom.innerHTML = ""
+  const newPlatformStudents = result.newPlatformStudents.filter(student => {
+    if (showType == 'plan') {
+      return student.planCount > 0
+    } else if (showType == 'formal') {
+      return student.formalCount > 0
+    }
+    return true
+  })
+  const oldPlatformStudents = result.oldPlatformStudents.filter(student => {
+    if (showType == 'plan') {
+      return student.planCount > 0
+    } else if (showType == 'formal') {
+      return student.formalCount > 0
+    }
+    return true
+  })
   xdfDom.appendChild(generateDom("p", "new-platform-tip", "新平台"))
-  result.newPlatformStudents.forEach(student => {
-    const studentInfo = `${student.name}:   规划课 ${student.planCount} 次 ; 正课 ${student.formalCount} 次`
+  newPlatformStudents.forEach(student => {
+    let studentInfo = `${student.name}:    `
+    if (showType !== 'formal') {
+      studentInfo +=  `规划课 ${student.planCount} 次 ;    `
+    }
+    if (showType != 'plan') {
+      studentInfo += `正课 ${student.formalCount} 次`
+    }
     xdfDom.appendChild(generateDom("p", "new-student-info", studentInfo))
   })
   xdfDom.appendChild(generateDom("p", "old-platform-tip", "<strong>老</strong>平台"))
-  result.oldPlatformStudents.forEach(student => {
-    const studentInfo = `${student.name}:   规划课 ${student.planCount} 次 ; 正课 ${student.formalCount} 次`
+  oldPlatformStudents.forEach(student => {
+    let studentInfo = `${student.name}:    `
+    if (showType !== 'formal') {
+      studentInfo +=  `规划课 ${student.planCount} 次 ;    `
+    }
+    if (showType != 'plan') {
+      studentInfo += `正课 ${student.formalCount} 次`
+    }
     xdfDom.appendChild(generateDom("p", "old-student-info", studentInfo))
   })
   xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时`))
@@ -177,15 +205,26 @@ function renderResults(result) {
 
 
 document.addEventListener('DOMContentLoaded', function() {
+  let showType = "all"
+  let result = null
+  toArray(document.getElementsByName("showType")).forEach(inputDom => {
+    inputDom.onclick = function() {
+      if (showType !== inputDom.value) {
+        showType = inputDom.value
+        result && renderResults(result, showType)
+      }
+    }
+  })
   document.getElementById("caculateBtn").onclick = function() {
     const startTime = document.getElementById("startTime").value
     const endTime = document.getElementById("endTime").value
     if (startTime.match(/\d{4}-\d{2}-\d{2}/) && endTime.match(/\d{4}-\d{2}-\d{2}/)) {
       renderStatus("正在计算中...")
       caculate(new Date(startTime), new Date(endTime))
-        .then(result => {
+        .then(res => {
           renderStatus("成功！")
-          renderResults(result)
+          result = res
+          renderResults(result, showType)
         })
         .catch(error => {
           renderStatus("出错了: " + error)
