@@ -16,6 +16,10 @@ function workDayIndex(date) {
   return monthPrefix + month + "-" + datePrefix + dateInMonth;
 }
 
+const CLASS_TYPE = {
+
+}
+
 function extractWorkItem(itemDom) {
   let item = {}
   const isNewPlatform = itemDom.style.backgroundColor.includes("(255, 255, 255)")
@@ -23,8 +27,13 @@ function extractWorkItem(itemDom) {
   let time = timeTr.innerText;
   const detailTrs = toArray(itemDom.children[1].children[0].children[0].children[0].children[0].children[0].children)
   let user = detailTrs[0].innerText;
-  let classType = detailTrs[2].innerText;
-  let classHour = classType.includes("规划") ? 0.5 : 1.5
+  let classType = detailTrs[2].innerText + (user.includes("体验SY") ? "(体验课)" : "");
+  let classHour = 1.5;
+  if (classType.includes("规划")) {
+    classHour = 0.5;
+  } else if (classType.includes("体验课")) {
+    classHour = 0.75;
+  }
   return { time: time, user: user, classType: classType, classHour: classHour, isNewPlatform: isNewPlatform };
 }
 
@@ -117,6 +126,7 @@ function caculate (startDate, endDate) {
       let totalHour = 0
       let planHour = 0
       let formalHour = 0
+      let experienceHour = 0
       for (let day in workMap) {
         const dayClassList = workMap[day]
         dayClassList.forEach(dayClass => {
@@ -124,11 +134,14 @@ function caculate (startDate, endDate) {
           const classRecord = { day, time: dayClass.time, type: dayClass.classType, hour: dayClass.hour }
           const studentsMap = dayClass.isNewPlatform ? newStudentsMap : oldStudentsMap
           if (!studentsMap[user]) {
-            studentsMap[user] = { total: 0, planCount: 0, formalCount:0, classes: [] }
+            studentsMap[user] = { total: 0, planCount: 0, formalCount:0, experienceCount: 0, classes: [] }
           }
           if (dayClass.classType.includes("规划")) {
             studentsMap[user].planCount = studentsMap[user].planCount + 1
             planHour += dayClass.classHour
+          } else if (dayClass.classType.includes("体验课")) {
+            studentsMap[user].experienceCount += 1
+            experienceHour += dayClass.classHour
           } else {
             studentsMap[user].formalCount = studentsMap[user].formalCount + 1
             formalHour += dayClass.classHour
@@ -138,9 +151,10 @@ function caculate (startDate, endDate) {
           totalHour += dayClass.classHour
         })
       }
-      return Promise.resolve({newStudentsMap, oldStudentsMap, totalHour, planHour, formalHour})
+      return Promise.resolve({newStudentsMap, oldStudentsMap, totalHour, planHour, formalHour, experienceHour })
     })
     .then(studentsMap => {//转成两个Array
+      console.log(studentsMap)
       const newPlatformStudents = []
       const oldPlatformStudents = []
       for (let name in studentsMap.newStudentsMap) {
@@ -149,8 +163,8 @@ function caculate (startDate, endDate) {
       for (let name in studentsMap.oldStudentsMap) {
         oldPlatformStudents.push(Object.assign({ name: align(name, 30) }, studentsMap.oldStudentsMap[name]))
       }
-      const { totalHour, planHour, formalHour } = studentsMap
-      return Promise.resolve({ newPlatformStudents, oldPlatformStudents, totalHour, planHour, formalHour })
+      const { totalHour, planHour, formalHour, experienceHour } = studentsMap
+      return Promise.resolve({ newPlatformStudents, oldPlatformStudents, totalHour, planHour, formalHour, experienceHour})
     })
 }
 
@@ -174,6 +188,8 @@ function renderResults(result, showType) {
       return student.planCount > 0
     } else if (showType == 'formal') {
       return student.formalCount > 0
+    } else if (showType == 'experience') {
+      return student.experienceCount > 0
     }
     return true
   })
@@ -182,32 +198,40 @@ function renderResults(result, showType) {
       return student.planCount > 0
     } else if (showType == 'formal') {
       return student.formalCount > 0
+    } else if (showType == 'experience') {
+      return student.experienceCount > 0
     }
     return true
   })
   xdfDom.appendChild(generateDom("p", "new-platform-tip", "新平台"))
   newPlatformStudents.forEach(student => {
     let studentInfo = `${student.name}:    `
-    if (showType !== 'formal') {
+    if (showType == 'plan' || showType == 'all') {
       studentInfo +=  `规划课 ${student.planCount} 次 ;    `
     }
-    if (showType != 'plan') {
-      studentInfo += `正课 ${student.formalCount} 次`
+    if (showType == 'formal' || showType == 'all') {
+      studentInfo += `正课 ${student.formalCount} 次 ;    `
+    }
+    if (showType == 'experience' || showType == 'all') {
+      studentInfo += `体验课 ${student.experienceCount} 次`
     }
     xdfDom.appendChild(generateDom("p", "new-student-info", studentInfo))
   })
   xdfDom.appendChild(generateDom("p", "old-platform-tip", "<strong>老</strong>平台"))
   oldPlatformStudents.forEach(student => {
     let studentInfo = `${student.name}:    `
-    if (showType !== 'formal') {
+    if (showType == 'plan' || showType == 'all') {
       studentInfo +=  `规划课 ${student.planCount} 次 ;    `
     }
-    if (showType != 'plan') {
-      studentInfo += `正课 ${student.formalCount} 次`
+    if (showType == 'formal' || showType == 'all') {
+      studentInfo += `正课 ${student.formalCount} 次;    `
+    }
+    if (showType == 'experience' || showType == 'all') {
+      studentInfo += `体验课 ${student.experienceCount} 次`
     }
     xdfDom.appendChild(generateDom("p", "old-student-info", studentInfo))
   })
-  xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时 (规划: ${result.planHour}小时，正课: ${result.formalHour}小时)`))
+  xdfDom.appendChild(generateDom("p", "total", `总计:  ${result.totalHour}小时 (规划: ${result.planHour}小时，正课: ${result.formalHour}小时)， 体验课: ${result.experienceHour}小时`))
 }
 
 
