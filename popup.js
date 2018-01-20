@@ -109,42 +109,61 @@ function caculate (startDate, endDate) {
     }
 
     const apiPromises = apiDays.map(date => dayString(date)).map(dateString => getWorkList(dateString));
-    return Promise.all(apiPromises)
-        .then((weekWorkMaps) => {
-        let monthWorkMap = {}
+    return Promise.all(apiPromises).then(weekWorkMaps => {
+    	// 给key增加年份 '01-01(一)' => '2018-01-01(一)'
+    	let cursorDay = apiDays[0]
+		let offset = 0
+		const newWeekWorkMaps = []
+		weekWorkMaps.forEach(weekWorkMap => {
+			 const workMap = {}
+			 Object.keys(weekWorkMap).forEach(dayKey => {
+				 cursorDay = new Date(cursorDay.getTime() + offset * ONE_DAY_TIME)
+				 workMap[`${cursorDay.getFullYear()}-${dayKey}`] = weekWorkMap[dayKey]
+				 offset += 1
+			 })
+			newWeekWorkMaps.push(workMap)
+		})
+		return newWeekWorkMaps
+	}).then((weekWorkMaps) => {
+        const monthWorkMap = {}
         if (weekWorkMaps.length === 1) { //在同一周内
-        const weekWorkMap = weekWorkMaps[0]
-        Object.keys(weekWorkMap).slice(startDayIndex, endDayIndex + 1).reduce((acc, dayTime) => {
-            acc[dayTime] = weekWorkMap[dayTime]
-            return acc
-        }, monthWorkMap)
-    } else {
-        const firtWeekMap = weekWorkMaps[0]
-        const lastWeekMap = weekWorkMaps[weekWorkMaps.length - 1]
-        Object.keys(firtWeekMap).slice(startDayIndex).reduce((acc, dayTime) => {
-            acc[dayTime] = firtWeekMap[dayTime]
-        }, monthWorkMap)
-        Object.keys(weekWorkMap).slice(0, endDayIndex + 1).reduce((acc, dayTime) => {
-            acc[dayTime] = lastWeekMap[dayTime]
-        }, monthWorkMap)
-        for (let i = 1; i < weekWorkMaps.length - 1; i += 1) {
-            const curWeekMap = weekWorkMaps[i]
-            Object.assign(monthWorkMap, curWeekMap)
-        }
-    }
-    return Promise.resolve(monthWorkMap)
-})
-.then(monthWorkMap => { //过滤掉无效的日期
-        const startKey = workDayIndex(startDay)
-        const endKey = workDayIndex(endDay)
-        const dayKeys = Object.keys(monthWorkMap).filter(key => startKey <= key.substr(0, 5) && endKey >= key.substr(0, 5))
-    const realWorkMap = {}
-    dayKeys.forEach(dayKey => {
-        realWorkMap[dayKey] = monthWorkMap[dayKey]
-    })
-    return Promise.resolve(realWorkMap)
-})
-.then(workMap => { //转成 studentsMap
+        	const weekWorkMap = weekWorkMaps[0]
+			const validKeys = Object.keys(weekWorkMap).slice(startDayIndex, endDayIndex + 1)
+			validKeys.forEach(validKey => {
+				monthWorkMap[validKey] = weekWorkMap[validKey]
+			})
+		} else {
+        	const firtWeekMap = weekWorkMaps[0]
+			Object.keys(firtWeekMap).slice(startDayIndex).forEach(key => {
+				monthWorkMap[key] = firtWeekMap[key]
+			})
+        	const lastWeekMap = weekWorkMaps[weekWorkMaps.length - 1]
+			Object.keys(lastWeekMap).slice(0, endDayIndex + 1).forEach(key => {
+				monthWorkMap[key] = lastWeekMap[key]
+			})
+			for (let i = 1; i < weekWorkMaps.length - 1; i += 1) {
+				const curWeekMap = weekWorkMaps[i]
+				Object.keys(curWeekMap).forEach(key => {
+					monthWorkMap[key] = curWeekMap[key]
+				})
+        	}
+    	}
+    	console.log(monthWorkMap)
+		/**
+		 {
+		 	'2018-01-01(一)': [
+		 		{
+		 			classHour: 1.5,
+		 			classType: '雅思语法',
+		 			isNewPlatform: false,
+		 			time: '08:00 ~ 09:30',
+		 			user: '01RYSE044【midexiang1992 】徐凡-重读】'
+		 		}
+		 	]
+		 }
+		 */
+    	return Promise.resolve(monthWorkMap)
+    }).then(workMap => { //转成 studentsMap
         const newStudentsMap = {}
         const oldStudentsMap = {}
         let totalHour = 0
