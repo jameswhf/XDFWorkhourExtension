@@ -25,15 +25,12 @@ function extractWorkItem(itemDom) {
     const isNewPlatform = itemDom.style.backgroundColor.includes("(255, 255, 255)")
     const timeTr = itemDom.children[0].children[0].children[0];
     let time = timeTr.innerText.trim();// 20:15 ~ 20:45
+    const [ [ h1, m1], [ h2, m2 ] ] = time.split("～").map(s => s.split(':').map(i => ~~i))
+    const classHour = h2 - h1 + (m2 - m1) / 60
     const detailTrs = toArray(itemDom.children[1].children[0].children[0].children[0].children[0].children[0].children)
     let user = detailTrs[0].innerText.trim();
     let classType = detailTrs[2].innerText.trim() + (user.includes("体验SY") ? "(体验课)" : "");
-    let classHour = 1.5;
-    if (classType.includes("规划")) {
-        classHour = 0.5;
-    } else if (classType.includes("体验课")) {
-        classHour = 0.75;
-    }
+
     return { time: time, user: user, classType: classType, classHour: classHour, isNewPlatform: isNewPlatform };
 }
 
@@ -103,7 +100,7 @@ function caculate (startDate, endDate) {
 
     const apiDays = []
     let apiDay = new Date(startDay.getTime() - startDayIndex * ONE_DAY_TIME)
-    while (apiDay.getTime() < endDay.getTime()) {
+    while (apiDay.getTime() <= endDay.getTime()) {
         apiDays.push(apiDay)
         apiDay = new Date(apiDay.getTime() + 7 * ONE_DAY_TIME)
     }
