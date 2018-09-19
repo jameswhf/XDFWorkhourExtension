@@ -82,8 +82,8 @@
   <body>
     <div id="popup">
       <div class="inputArea">
-        <p><span>起始时间:</span><input id="startTime" placeholder="格式: 2018-01-20" value="2018-01-20"/></p>
-        <p><span>结束时间:</span><input id="endTime" placeholder="格式: 2018-01-20" value="2018-01-20"/></p>
+        <p><span>起始时间:</span><input id="startTime" placeholder="格式: 2018-08-21" value="2018-08-21"></p>
+        <p><span>结束时间:</span><input id="endTime" placeholder="格式: 2018-09-20" value="2018-09-20"/></p>
         <p>
           <button id="caculateBtn">计算</button>
           <input type="radio" name="showType" value="plan" checked style="margin-left: 20px" /><span>只看规划</span>
@@ -97,5 +97,20 @@
       <div id="xdf"></div>
     </div>
     <img id="image-result" hidden>
+    <script>
+        const date = new Date()
+        const curMonth = date.getMonth()
+        const curYear = date.getFullYear()
+        const formatMonth = m => m < 10 ? `0${m}` : `${m}`
+        const endDay = `${curYear}-${formatMonth(curMonth+1)}-20`
+        let startDay = null
+        if (curMonth === 0) {
+            starDay = `${curYear - 1}-12-21`
+        } else {
+            startDay = `${curYear}-${formatMonth(curMonth)}-21`
+        }
+        document.querySelector('#startTime').value = startDay
+        document.querySelector('#endTime').value = endDay
+    </script>
   </body>
 </html>
